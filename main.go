@@ -13,10 +13,6 @@ import (
 	"time"
 )
 
-const (
-	REG_SYNCVALUE1 = 0x2F
-)
-
 func run() error {
 	if _, err := host.Init(); err != nil {
 		return errors.Wrap(err, "host init")
@@ -77,7 +73,16 @@ func run() error {
 		}
 	}
 
+	setConfig(conn, getConfig(RF69_433MHZ, 100))
+
 	return nil
+}
+
+func setConfig(conn spi.Conn, config [][2]byte) {
+	for _, kv := range config {
+		fmt.Printf("config 0x%02x = 0x%02x\n", kv[0], kv[1])
+		mustWriteReg(conn, kv[0], kv[1])
+	}
 }
 
 func noErr(err error) {

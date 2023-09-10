@@ -74,9 +74,23 @@ func run() error {
 	}
 
 	setConfig(conn, getConfig(RF69_433MHZ, 100))
+	setHighPower(conn)
 	sendFrame(conn, 2, 1, []byte("abc123"))
 
 	return nil
+}
+
+func setHighPower(conn spi.Conn) {
+	mustWriteReg(conn, REG_TESTPA1, 0x5D)
+	mustWriteReg(conn, REG_TESTPA2, 0x7C)
+
+	mustWriteReg(conn, REG_OCP, RF_OCP_OFF)
+	//enable P1 & P2 amplifier stages
+	mustWriteReg(
+		conn,
+		REG_PALEVEL,
+		(mustReadReg(conn, REG_PALEVEL)&0x1F)|RF_PALEVEL_PA1_ON|RF_PALEVEL_PA2_ON,
+	)
 }
 
 func sendFrame(

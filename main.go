@@ -35,8 +35,6 @@ func run() error {
 
 	fmt.Println(conn.String())
 
-	t0 := time.Now()
-
 	rst := gpioreg.ByName("GPIO5")
 
 	err = rst.Out(gpio.High)
@@ -49,15 +47,33 @@ func run() error {
 
 	time.Sleep(300 * time.Millisecond)
 
-	for {
-		a := mustReadReg(conn, REG_SYNCVALUE1)
-		fmt.Printf("val = 0x%02x\n", a)
-		if a == 0xAA {
-			break
+	{
+		t0 := time.Now()
+		for {
+			a := mustReadReg(conn, REG_SYNCVALUE1)
+			fmt.Printf("val = 0x%02x\n", a)
+			if a == 0xAA {
+				break
+			}
+			mustWriteReg(conn, REG_SYNCVALUE1, 0xAA)
+			if time.Now().Sub(t0) > 15*time.Second {
+				panic("not syncing")
+			}
 		}
-		mustWriteReg(conn, REG_SYNCVALUE1, 0xAA)
-		if time.Now().Sub(t0) > 15*time.Second {
-			panic("not syncing")
+	}
+
+	{
+		t0 := time.Now()
+		for {
+			a := mustReadReg(conn, REG_SYNCVALUE1)
+			fmt.Printf("val = 0x%02x\n", a)
+			if a == 0x55 {
+				break
+			}
+			mustWriteReg(conn, REG_SYNCVALUE1, 0x55)
+			if time.Now().Sub(t0) > 15*time.Second {
+				panic("not syncing")
+			}
 		}
 	}
 

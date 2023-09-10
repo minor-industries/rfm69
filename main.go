@@ -75,7 +75,7 @@ func run() error {
 
 	setConfig(conn, getConfig(RF69_433MHZ, 100))
 	setHighPower(conn)
-	sendFrame(conn, 2, 1, []byte("abc123"))
+	sendFrame(conn, 2, 1, []byte("abc123\x00"))
 
 	return nil
 }

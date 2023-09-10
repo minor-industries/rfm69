@@ -49,8 +49,12 @@ func run() error {
 
 	time.Sleep(300 * time.Millisecond)
 
-	for a := mustReadReg(conn, REG_SYNCVALUE1); a != 0xAA; {
+	for {
+		a := mustReadReg(conn, REG_SYNCVALUE1)
 		fmt.Printf("val = 0x%02x\n", a)
+		if a == 0xAA {
+			break
+		}
 		mustWriteReg(conn, REG_SYNCVALUE1, 0xAA)
 		if time.Now().Sub(t0) > 15*time.Second {
 			panic("not syncing")
@@ -87,7 +91,7 @@ func mustReadReg(conn spi.Conn, addr byte) byte {
 		panic(errors.Wrap(err, "tx"))
 	}
 
-	return rx[0]
+	return rx[1]
 }
 
 func main() {

@@ -73,9 +73,23 @@ func run() error {
 		}
 	}
 
+	intr := gpioreg.ByName("GPIO24")
+	err = intr.In(gpio.Float, gpio.RisingEdge)
+	noErr(errors.Wrap(err, "in"))
+
+	go func() {
+		for {
+			intr.WaitForEdge(-1)
+			fmt.Println("edge")
+		}
+
+	}()
+
 	setConfig(conn, getConfig(RF69_433MHZ, 100))
 	setHighPower(conn)
 	sendFrame(conn, 2, 1, []byte("abc123\x00"))
+
+	select {}
 
 	return nil
 }
@@ -108,7 +122,6 @@ func sendFrame(
 	for {
 		val := mustReadReg(conn, REG_IRQFLAGS1)
 		if val&RF_IRQFLAGS1_MODEREADY == 0x00 {
-			fmt.Println("continue1")
 			continue
 		}
 		break
@@ -145,7 +158,6 @@ func sendFrame(
 	for {
 		val := mustReadReg(conn, REG_IRQFLAGS2)
 		if val&RF_IRQFLAGS2_PACKETSENT == 0x00 {
-			fmt.Println("continue2")
 			continue
 		}
 		break

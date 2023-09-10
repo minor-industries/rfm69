@@ -74,8 +74,69 @@ func run() error {
 	}
 
 	setConfig(conn, getConfig(RF69_433MHZ, 100))
+	sendFrame(conn, 2, 1, []byte("abc123"))
 
 	return nil
+}
+
+func sendFrame(
+	conn spi.Conn,
+	toAddr byte,
+	fromAddr byte,
+	msg []byte,
+) {
+	mustWriteReg(
+		conn,
+		REG_OPMODE,
+		mustReadReg(conn, REG_OPMODE)&0xE3|RF_OPMODE_STANDBY,
+	)
+
+	for {
+		val := mustReadReg(conn, REG_IRQFLAGS1)
+		if val&RF_IRQFLAGS1_MODEREADY == 0x00 {
+			fmt.Println("continue1")
+			continue
+		}
+		break
+	}
+
+	fmt.Println("here1")
+	mustWriteReg(conn, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
+
+	ack := byte(0)
+
+	tx := []byte{
+		REG_FIFO | 0x80,
+		byte(len(msg) + 3),
+		toAddr,
+		fromAddr,
+		ack,
+	}
+
+	tx = append(tx, msg...)
+
+	err := conn.Tx(
+		tx,
+		nil,
+	)
+	noErr(errors.Wrap(err, "tx"))
+
+	mustWriteReg(
+		conn,
+		REG_OPMODE,
+		mustReadReg(conn, REG_OPMODE)&0xE3|RF_OPMODE_TRANSMITTER,
+		// high power???
+	)
+
+	for {
+		val := mustReadReg(conn, REG_IRQFLAGS2)
+		if val&RF_IRQFLAGS2_PACKETSENT == 0x00 {
+			fmt.Println("continue2")
+			continue
+		}
+		break
+	}
+	fmt.Println("here2")
 }
 
 func setConfig(conn spi.Conn, config [][2]byte) {

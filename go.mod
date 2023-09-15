@@ -1,4 +1,4 @@
-module rfm69
+module github.com/minor-industries/rfm69
 
 go 1.20
 

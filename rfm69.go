@@ -5,32 +5,36 @@ import (
 	"github.com/pkg/errors"
 	"periph.io/x/conn/v3/gpio"
 	"periph.io/x/conn/v3/gpio/gpioreg"
-	"periph.io/x/conn/v3/spi"
 	"time"
 )
 
-func Run(conn spi.Conn) error {
-	rst := gpioreg.ByName("GPIO5")
+type Board interface {
+	TxSPI(w, r []byte) error
+	Reset(bool) error
+}
 
-	err := rst.Out(gpio.High)
-	noErr(errors.Wrap(err, "high"))
+func Run(board Board) error {
+	if err := board.Reset(true); err != nil {
+		return errors.Wrap(err, "reset")
+	}
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // TODO: shorten to optimal value
 
-	err = rst.Out(gpio.Low)
-	noErr(errors.Wrap(err, "low"))
+	if err := board.Reset(false); err != nil {
+		return errors.Wrap(err, "reset")
+	}
 
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond) // TODO: shorten to optimal value
 
 	{
 		t0 := time.Now()
 		for {
-			a := mustReadReg(conn, REG_SYNCVALUE1)
+			a := mustReadReg(board, REG_SYNCVALUE1)
 			fmt.Printf("val = 0x%02x\n", a)
 			if a == 0xAA {
 				break
 			}
-			mustWriteReg(conn, REG_SYNCVALUE1, 0xAA)
+			mustWriteReg(board, REG_SYNCVALUE1, 0xAA)
 			if time.Now().Sub(t0) > 15*time.Second {
 				panic("not syncing")
 			}
@@ -40,12 +44,12 @@ func Run(conn spi.Conn) error {
 	{
 		t0 := time.Now()
 		for {
-			a := mustReadReg(conn, REG_SYNCVALUE1)
+			a := mustReadReg(board, REG_SYNCVALUE1)
 			fmt.Printf("val = 0x%02x\n", a)
 			if a == 0x55 {
 				break
 			}
-			mustWriteReg(conn, REG_SYNCVALUE1, 0x55)
+			mustWriteReg(board, REG_SYNCVALUE1, 0x55)
 			if time.Now().Sub(t0) > 15*time.Second {
 				panic("not syncing")
 			}
@@ -53,7 +57,7 @@ func Run(conn spi.Conn) error {
 	}
 
 	intr := gpioreg.ByName("GPIO24")
-	err = intr.In(gpio.Float, gpio.RisingEdge)
+	err := intr.In(gpio.Float, gpio.RisingEdge)
 	noErr(errors.Wrap(err, "in"))
 
 	go func() {
@@ -64,42 +68,37 @@ func Run(conn spi.Conn) error {
 
 	}()
 
-	setConfig(conn, getConfig(RF69_433MHZ, 100))
-	setHighPower(conn)
-	sendFrame(conn, 2, 1, []byte("abc123\x00"))
+	setConfig(board, getConfig(RF69_433MHZ, 100))
+	setHighPower(board)
+	sendFrame(board, 2, 1, []byte("abc123\x00"))
 
 	select {}
 
 	return nil
 }
 
-func setHighPower(conn spi.Conn) {
-	mustWriteReg(conn, REG_TESTPA1, 0x5D)
-	mustWriteReg(conn, REG_TESTPA2, 0x7C)
+func setHighPower(board Board) {
+	mustWriteReg(board, REG_TESTPA1, 0x5D)
+	mustWriteReg(board, REG_TESTPA2, 0x7C)
 
-	mustWriteReg(conn, REG_OCP, RF_OCP_OFF)
+	mustWriteReg(board, REG_OCP, RF_OCP_OFF)
 	//enable P1 & P2 amplifier stages
 	mustWriteReg(
-		conn,
+		board,
 		REG_PALEVEL,
-		(mustReadReg(conn, REG_PALEVEL)&0x1F)|RF_PALEVEL_PA1_ON|RF_PALEVEL_PA2_ON,
+		(mustReadReg(board, REG_PALEVEL)&0x1F)|RF_PALEVEL_PA1_ON|RF_PALEVEL_PA2_ON,
 	)
 }
 
-func sendFrame(
-	conn spi.Conn,
-	toAddr byte,
-	fromAddr byte,
-	msg []byte,
-) {
+func sendFrame(board Board, toAddr byte, fromAddr byte, msg []byte) {
 	mustWriteReg(
-		conn,
+		board,
 		REG_OPMODE,
-		mustReadReg(conn, REG_OPMODE)&0xE3|RF_OPMODE_STANDBY,
+		mustReadReg(board, REG_OPMODE)&0xE3|RF_OPMODE_STANDBY,
 	)
 
 	for {
-		val := mustReadReg(conn, REG_IRQFLAGS1)
+		val := mustReadReg(board, REG_IRQFLAGS1)
 		if val&RF_IRQFLAGS1_MODEREADY == 0x00 {
 			continue
 		}
@@ -107,7 +106,7 @@ func sendFrame(
 	}
 
 	fmt.Println("here1")
-	mustWriteReg(conn, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
+	mustWriteReg(board, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
 
 	ack := byte(0)
 
@@ -121,21 +120,21 @@ func sendFrame(
 
 	tx = append(tx, msg...)
 
-	err := conn.Tx(
+	err := board.TxSPI(
 		tx,
 		nil,
 	)
 	noErr(errors.Wrap(err, "tx"))
 
 	mustWriteReg(
-		conn,
+		board,
 		REG_OPMODE,
-		mustReadReg(conn, REG_OPMODE)&0xE3|RF_OPMODE_TRANSMITTER,
+		mustReadReg(board, REG_OPMODE)&0xE3|RF_OPMODE_TRANSMITTER,
 		// high power???
 	)
 
 	for {
-		val := mustReadReg(conn, REG_IRQFLAGS2)
+		val := mustReadReg(board, REG_IRQFLAGS2)
 		if val&RF_IRQFLAGS2_PACKETSENT == 0x00 {
 			continue
 		}
@@ -144,10 +143,10 @@ func sendFrame(
 	fmt.Println("here2")
 }
 
-func setConfig(conn spi.Conn, config [][2]byte) {
+func setConfig(board Board, config [][2]byte) {
 	for _, kv := range config {
 		fmt.Printf("config 0x%02x = 0x%02x\n", kv[0], kv[1])
-		mustWriteReg(conn, kv[0], kv[1])
+		mustWriteReg(board, kv[0], kv[1])
 	}
 }
 
@@ -157,10 +156,10 @@ func noErr(err error) {
 	}
 }
 
-func mustWriteReg(conn spi.Conn, addr byte, value byte) {
+func mustWriteReg(board Board, addr byte, value byte) {
 	rx := make([]byte, 2)
 
-	if err := conn.Tx(
+	if err := board.TxSPI(
 		[]byte{addr | 0x80, value},
 		rx,
 	); err != nil {
@@ -168,10 +167,10 @@ func mustWriteReg(conn spi.Conn, addr byte, value byte) {
 	}
 }
 
-func mustReadReg(conn spi.Conn, addr byte) byte {
+func mustReadReg(board Board, addr byte) byte {
 	rx := make([]byte, 2)
 
-	if err := conn.Tx(
+	if err := board.TxSPI(
 		[]byte{addr & 0x7F, 0},
 		rx,
 	); err != nil {

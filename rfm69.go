@@ -13,7 +13,10 @@ type Board interface {
 	Reset(bool) error
 }
 
-func Run(board Board) error {
+func Run(
+	board Board,
+	log func(string),
+) error {
 	if err := board.Reset(true); err != nil {
 		return errors.Wrap(err, "reset")
 	}
@@ -33,7 +36,7 @@ func Run(board Board) error {
 			if err != nil {
 				return errors.Wrap(err, "read syncvalue1")
 			}
-			fmt.Printf("val = 0x%02x\n", a)
+			log(fmt.Sprintf("val = 0x%02x\n", a))
 			if a == 0xAA {
 				break
 			}
@@ -53,7 +56,7 @@ func Run(board Board) error {
 			if err != nil {
 				return errors.Wrap(err, "read syncvalue1")
 			}
-			fmt.Printf("val = 0x%02x\n", a)
+			log(fmt.Sprintf("val = 0x%02x\n", a))
 			if a == 0x55 {
 				break
 			}
@@ -73,12 +76,16 @@ func Run(board Board) error {
 	go func() {
 		for {
 			intr.WaitForEdge(-1)
-			fmt.Println("edge")
+			log(fmt.Sprintf("edge"))
 		}
 
 	}()
 
-	if err := setConfig(board, getConfig(RF69_433MHZ, 100)); err != nil {
+	if err := setConfig(
+		board,
+		log,
+		getConfig(RF69_433MHZ, 100),
+	); err != nil {
 		return errors.Wrap(err, "set config")
 	}
 
@@ -86,7 +93,13 @@ func Run(board Board) error {
 		return errors.Wrap(err, "set high power")
 	}
 
-	if err := sendFrame(board, 2, 1, []byte("abc123\x00")); err != nil {
+	if err := sendFrame(
+		board,
+		log,
+		2,
+		1,
+		[]byte("abc123\x00"),
+	); err != nil {
 		return errors.Wrap(err, "send frame")
 	}
 
@@ -117,7 +130,7 @@ func setHighPower(board Board) error {
 	return nil
 }
 
-func sendFrame(board Board, toAddr byte, fromAddr byte, msg []byte) error {
+func sendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []byte) error {
 	if err := editReg(board, REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_STANDBY
 	}); err != nil {
@@ -135,7 +148,7 @@ func sendFrame(board Board, toAddr byte, fromAddr byte, msg []byte) error {
 		break
 	}
 
-	fmt.Println("here1")
+	log(fmt.Sprintf("here1"))
 	if err := writeReg(board, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00); err != nil {
 		return errors.Wrap(err, "write")
 	}
@@ -179,9 +192,9 @@ func sendFrame(board Board, toAddr byte, fromAddr byte, msg []byte) error {
 	return nil
 }
 
-func setConfig(board Board, config [][2]byte) error {
+func setConfig(board Board, log func(string), config [][2]byte) error {
 	for _, kv := range config {
-		fmt.Printf("config 0x%02x = 0x%02x\n", kv[0], kv[1])
+		log(fmt.Sprintf("config 0x%02x = 0x%02x\n", kv[0], kv[1]))
 		if err := writeReg(board, kv[0], kv[1]); err != nil {
 			return errors.Wrap(err, "write")
 		}

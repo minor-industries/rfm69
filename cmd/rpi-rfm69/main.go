@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"github.com/minor-industries/rfm69"
 	"github.com/pkg/errors"
 	"log"
@@ -48,7 +49,11 @@ func run() error {
 	rst := gpioreg.ByName("GPIO5")
 	board := &Board{spi: conn, rst: rst}
 
-	return errors.Wrap(rfm69.Run(board), "run")
+	log := func(s string) {
+		fmt.Print(s)
+	}
+
+	return errors.Wrap(rfm69.Run(board, log), "run")
 }
 
 func main() {

@@ -1,4 +1,4 @@
-package main
+package rfm69
 
 const (
 	REG_FIFO          = 0x00

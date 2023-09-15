@@ -3,14 +3,13 @@ package rfm69
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	"periph.io/x/conn/v3/gpio"
-	"periph.io/x/conn/v3/gpio/gpioreg"
 	"time"
 )
 
 type Board interface {
 	TxSPI(w, r []byte) error
 	Reset(bool) error
+	WaitForD0Edge()
 }
 
 func Run(
@@ -69,13 +68,9 @@ func Run(
 		}
 	}
 
-	intr := gpioreg.ByName("GPIO24")
-	err := intr.In(gpio.Float, gpio.RisingEdge)
-	noErr(errors.Wrap(err, "in"))
-
 	go func() {
 		for {
-			intr.WaitForEdge(-1)
+			board.WaitForD0Edge()
 			log(fmt.Sprintf("edge"))
 		}
 

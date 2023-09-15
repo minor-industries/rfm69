@@ -14,8 +14,13 @@ import (
 )
 
 type Board struct {
-	spi spi.Conn
-	rst gpio.PinIO
+	spi  spi.Conn
+	rst  gpio.PinIO
+	intr gpio.PinIO
+}
+
+func (b *Board) WaitForD0Edge() {
+	b.intr.WaitForEdge(-1)
 }
 
 func (b *Board) TxSPI(w, r []byte) error {
@@ -47,7 +52,13 @@ func run() error {
 	}
 
 	rst := gpioreg.ByName("GPIO5")
-	board := &Board{spi: conn, rst: rst}
+
+	intr := gpioreg.ByName("GPIO24")
+	if err := intr.In(gpio.Float, gpio.RisingEdge); err != nil {
+		return errors.Wrap(err, "gpio in")
+	}
+
+	board := &Board{spi: conn, rst: rst, intr: intr}
 
 	log := func(s string) {
 		fmt.Print(s)

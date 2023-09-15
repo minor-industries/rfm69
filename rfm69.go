@@ -200,12 +200,6 @@ func setConfig(board Board, log func(string), config [][2]byte) error {
 	return nil
 }
 
-func noErr(err error) {
-	if err != nil {
-		panic(err)
-	}
-}
-
 func readReg(board Board, addr byte) (byte, error) {
 	rx := make([]byte, 2)
 

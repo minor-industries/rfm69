@@ -68,14 +68,6 @@ func Run(
 		}
 	}
 
-	go func() {
-		for {
-			board.WaitForD0Edge()
-			log(fmt.Sprintf("edge"))
-		}
-
-	}()
-
 	if err := setConfig(
 		board,
 		log,
@@ -88,17 +80,27 @@ func Run(
 		return errors.Wrap(err, "set high power")
 	}
 
-	if err := sendFrame(
-		board,
-		log,
-		2,
-		1,
-		[]byte("abc123\x00"),
-	); err != nil {
-		return errors.Wrap(err, "send frame")
-	}
+	go func() {
+		for {
+			board.WaitForD0Edge()
+			log(fmt.Sprintf("edge\n"))
+		}
 
-	select {}
+	}()
+
+	ticker := time.NewTicker(time.Second)
+
+	for range ticker.C {
+		if err := sendFrame(
+			board,
+			log,
+			2,
+			1,
+			[]byte("abc123\x00"),
+		); err != nil {
+			return errors.Wrap(err, "send frame")
+		}
+	}
 
 	return nil
 }
@@ -143,7 +145,7 @@ func sendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []
 		break
 	}
 
-	log(fmt.Sprintf("here1"))
+	log(fmt.Sprintf("here1\n"))
 	if err := writeReg(board, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00); err != nil {
 		return errors.Wrap(err, "write")
 	}

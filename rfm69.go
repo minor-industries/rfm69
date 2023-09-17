@@ -43,7 +43,7 @@ func Run(
 				return errors.Wrap(err, "write syncvalue1")
 			}
 			if time.Now().Sub(t0) > 15*time.Second {
-				panic("not syncing")
+				return errors.New("not syncing")
 			}
 		}
 	}
@@ -63,7 +63,7 @@ func Run(
 				return errors.Wrap(err, "write syncvalue1")
 			}
 			if time.Now().Sub(t0) > 15*time.Second {
-				panic("not syncing")
+				return errors.New("not syncing")
 			}
 		}
 	}

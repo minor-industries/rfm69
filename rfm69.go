@@ -130,6 +130,12 @@ func Rx(
 
 	go func() {
 		for {
+			err := beginReceive(board)
+			if err != nil {
+				errCh <- errors.Wrap(err, "begin receive")
+				return
+			}
+
 			<-intrCh
 			log("got interrupt\n")
 
@@ -176,6 +182,10 @@ func Rx(
 		}
 	}()
 
+	return errors.Wrap(<-errCh, "error channel")
+}
+
+func beginReceive(board Board) error {
 	irqflags2, err := readReg(board, REG_IRQFLAGS2)
 	if err != nil {
 		return err
@@ -207,8 +217,7 @@ func Rx(
 	if err := writeReg(board, REG_TESTPA2, 0x70); err != nil {
 		return err
 	}
-
-	return errors.Wrap(<-errCh, "error channel")
+	return nil
 }
 
 func setHighPower(board Board) error {

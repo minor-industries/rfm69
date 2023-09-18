@@ -1,6 +1,7 @@
 package rfm69
 
 import (
+	"bytes"
 	"encoding/hex"
 	"fmt"
 	"github.com/pkg/errors"
@@ -143,7 +144,35 @@ func Rx(
 				return
 			}
 
+			rx = rx[1:]
 			log("rx: " + hex.Dump(rx))
+
+			payloadLength := rx[0]
+			targetID := rx[1]
+			senderID := rx[2]
+			ctlByte := rx[3]
+
+			log(fmt.Sprintf(
+				"len=%d, target=0x%02x, sender=0x%02x, ctl=0x%02x",
+				payloadLength,
+				targetID,
+				senderID,
+				ctlByte,
+			))
+
+			dataLength := payloadLength - 3
+
+			{
+				tx := []byte{REG_FIFO & 0x7f}
+				tx = append(tx, bytes.Repeat([]byte{0}, int(dataLength))...)
+				rx := make([]byte, len(tx))
+				if err := board.TxSPI(tx, rx); err != nil {
+					errCh <- errors.Wrap(err, "spi")
+					return
+				}
+				rx = rx[1:]
+				log("data: " + hex.Dump(rx))
+			}
 		}
 	}()
 

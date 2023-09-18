@@ -64,7 +64,15 @@ func run() error {
 		fmt.Print(s)
 	}
 
-	return errors.Wrap(rfm69.Run(board, log), "run")
+	if err := rfm69.Setup(board, log); err != nil {
+		return errors.Wrap(err, "setup")
+	}
+
+	if err := rfm69.Rx(board, log); err != nil {
+		return errors.Wrap(err, "rx")
+	}
+
+	return nil
 }
 
 func main() {

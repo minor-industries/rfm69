@@ -12,7 +12,7 @@ type Board interface {
 	WaitForD0Edge()
 }
 
-func Run(
+func Setup(
 	board Board,
 	log func(string),
 ) error {
@@ -80,6 +80,13 @@ func Run(
 		return errors.Wrap(err, "set high power")
 	}
 
+	return nil
+}
+
+func Tx(
+	board Board,
+	log func(string),
+) error {
 	go func() {
 		for {
 			board.WaitForD0Edge()
@@ -103,6 +110,61 @@ func Run(
 	}
 
 	return nil
+}
+
+func Rx(
+	board Board,
+	log func(string),
+) error {
+	ch := make(chan struct{})
+
+	go func() {
+		for {
+			board.WaitForD0Edge()
+			ch <- struct{}{}
+		}
+	}()
+
+	go func() {
+		for {
+			<-ch
+			log("got interrupt")
+		}
+	}()
+
+	irqflags2, err := readReg(board, REG_IRQFLAGS2)
+	if err != nil {
+		return err
+	}
+
+	if irqflags2&RF_IRQFLAGS2_PAYLOADREADY != 0 {
+		// avoid RX deadlocks??
+		if err := editReg(board, REG_PACKETCONFIG2, func(val byte) byte {
+			return val&0xFB | REG_PACKETCONFIG2
+		}); err != nil {
+			return err
+		}
+	}
+
+	if err := writeReg(board, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); err != nil {
+		return err
+	}
+
+	if err := editReg(board, REG_OPMODE, func(val byte) byte {
+		return val&0xE3 | RF_OPMODE_RECEIVER
+	}); err != nil {
+		return err
+	}
+
+	// set low power regs
+	if err := writeReg(board, REG_TESTPA1, 0x55); err != nil {
+		return err
+	}
+	if err := writeReg(board, REG_TESTPA2, 0x70); err != nil {
+		return err
+	}
+
+	select {} // TODO?
 }
 
 func setHighPower(board Board) error {

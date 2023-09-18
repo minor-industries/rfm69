@@ -1,6 +1,7 @@
 package rfm69
 
 import (
+	"encoding/hex"
 	"fmt"
 	"github.com/pkg/errors"
 	"time"
@@ -116,19 +117,33 @@ func Rx(
 	board Board,
 	log func(string),
 ) error {
-	ch := make(chan struct{})
+	intrCh := make(chan struct{})
+	errCh := make(chan error)
 
 	go func() {
 		for {
 			board.WaitForD0Edge()
-			ch <- struct{}{}
+			intrCh <- struct{}{}
 		}
 	}()
 
 	go func() {
 		for {
-			<-ch
-			log("got interrupt")
+			<-intrCh
+			log("got interrupt\n")
+
+			tx := []byte{REG_FIFO & 0x7f, 0, 0, 0, 0}
+			rx := make([]byte, len(tx))
+
+			if err := board.TxSPI(
+				tx,
+				rx,
+			); err != nil {
+				errCh <- errors.Wrap(err, "txspi")
+				return
+			}
+
+			log("rx: " + hex.Dump(rx))
 		}
 	}()
 
@@ -164,7 +179,7 @@ func Rx(
 		return err
 	}
 
-	select {} // TODO?
+	return errors.Wrap(<-errCh, "error channel")
 }
 
 func setHighPower(board Board) error {

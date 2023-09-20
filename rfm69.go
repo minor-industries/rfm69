@@ -14,17 +14,23 @@ type Board interface {
 	WaitForD0Edge()
 }
 
-func Setup(
-	board Board,
-	log func(string),
-) error {
-	if err := board.Reset(true); err != nil {
+type Radio struct {
+	board Board
+	log   func(string)
+}
+
+func NewRadio(board Board, log func(string)) *Radio {
+	return &Radio{board: board, log: log}
+}
+
+func (r *Radio) Setup() error {
+	if err := r.board.Reset(true); err != nil {
 		return errors.Wrap(err, "reset")
 	}
 
 	time.Sleep(100 * time.Microsecond)
 
-	if err := board.Reset(false); err != nil {
+	if err := r.board.Reset(false); err != nil {
 		return errors.Wrap(err, "reset")
 	}
 
@@ -33,15 +39,15 @@ func Setup(
 	{
 		t0 := time.Now()
 		for {
-			a, err := readReg(board, REG_SYNCVALUE1)
+			a, err := r.readReg(REG_SYNCVALUE1)
 			if err != nil {
 				return errors.Wrap(err, "read syncvalue1")
 			}
-			log(fmt.Sprintf("val = 0x%02x\n", a))
+			r.log(fmt.Sprintf("val = 0x%02x", a))
 			if a == 0xAA {
 				break
 			}
-			if err := writeReg(board, REG_SYNCVALUE1, 0xAA); err != nil {
+			if err := r.writeReg(REG_SYNCVALUE1, 0xAA); err != nil {
 				return errors.Wrap(err, "write syncvalue1")
 			}
 			if time.Now().Sub(t0) > 15*time.Second {
@@ -53,15 +59,15 @@ func Setup(
 	{
 		t0 := time.Now()
 		for {
-			a, err := readReg(board, REG_SYNCVALUE1)
+			a, err := r.readReg(REG_SYNCVALUE1)
 			if err != nil {
 				return errors.Wrap(err, "read syncvalue1")
 			}
-			log(fmt.Sprintf("val = 0x%02x\n", a))
+			r.log(fmt.Sprintf("val = 0x%02x", a))
 			if a == 0x55 {
 				break
 			}
-			if err := writeReg(board, REG_SYNCVALUE1, 0x55); err != nil {
+			if err := r.writeReg(REG_SYNCVALUE1, 0x55); err != nil {
 				return errors.Wrap(err, "write syncvalue1")
 			}
 			if time.Now().Sub(t0) > 15*time.Second {
@@ -70,29 +76,24 @@ func Setup(
 		}
 	}
 
-	if err := setConfig(
-		board,
-		log,
+	if err := r.setConfig(
 		getConfig(RF69_433MHZ, 100),
 	); err != nil {
 		return errors.Wrap(err, "set config")
 	}
 
-	if err := setHighPower(board); err != nil {
+	if err := r.setHighPower(); err != nil {
 		return errors.Wrap(err, "set high power")
 	}
 
 	return nil
 }
 
-func Tx(
-	board Board,
-	log func(string),
-) error {
+func (r *Radio) Tx() error {
 	go func() {
 		for {
-			board.WaitForD0Edge()
-			log(fmt.Sprintf("edge\n"))
+			r.board.WaitForD0Edge()
+			r.log(fmt.Sprintf("edge"))
 		}
 
 	}()
@@ -100,9 +101,7 @@ func Tx(
 	ticker := time.NewTicker(time.Second)
 
 	for range ticker.C {
-		if err := SendFrame(
-			board,
-			log,
+		if err := r.SendFrame(
 			2,
 			1,
 			[]byte("abc123\x00"),
@@ -114,35 +113,32 @@ func Tx(
 	return nil
 }
 
-func Rx(
-	board Board,
-	log func(string),
-) error {
+func (r *Radio) Rx() error {
 	intrCh := make(chan struct{})
 	errCh := make(chan error)
 
 	go func() {
 		for {
-			board.WaitForD0Edge()
+			r.board.WaitForD0Edge()
 			intrCh <- struct{}{}
 		}
 	}()
 
 	go func() {
 		for {
-			err := beginReceive(board)
+			err := r.beginReceive()
 			if err != nil {
 				errCh <- errors.Wrap(err, "begin receive")
 				return
 			}
 
 			<-intrCh
-			log("got interrupt\n")
+			r.log("got interrupt")
 
 			tx := []byte{REG_FIFO & 0x7f, 0, 0, 0, 0}
 			rx := make([]byte, len(tx))
 
-			if err := board.TxSPI(
+			if err := r.board.TxSPI(
 				tx,
 				rx,
 			); err != nil {
@@ -151,14 +147,14 @@ func Rx(
 			}
 
 			rx = rx[1:]
-			log("rx: " + hex.Dump(rx))
+			r.log("rx: " + hex.Dump(rx))
 
 			payloadLength := rx[0]
 			targetID := rx[1]
 			senderID := rx[2]
 			ctlByte := rx[3]
 
-			log(fmt.Sprintf(
+			r.log(fmt.Sprintf(
 				"len=%d, target=0x%02x, sender=0x%02x, ctl=0x%02x",
 				payloadLength,
 				targetID,
@@ -172,12 +168,12 @@ func Rx(
 				tx := []byte{REG_FIFO & 0x7f}
 				tx = append(tx, bytes.Repeat([]byte{0}, int(dataLength))...)
 				rx := make([]byte, len(tx))
-				if err := board.TxSPI(tx, rx); err != nil {
+				if err := r.board.TxSPI(tx, rx); err != nil {
 					errCh <- errors.Wrap(err, "spi")
 					return
 				}
 				rx = rx[1:]
-				log("data: " + hex.Dump(rx))
+				r.log("data: " + hex.Dump(rx))
 			}
 		}
 	}()
@@ -185,55 +181,55 @@ func Rx(
 	return errors.Wrap(<-errCh, "error channel")
 }
 
-func beginReceive(board Board) error {
-	irqflags2, err := readReg(board, REG_IRQFLAGS2)
+func (r *Radio) beginReceive() error {
+	irqflags2, err := r.readReg(REG_IRQFLAGS2)
 	if err != nil {
 		return err
 	}
 
 	if irqflags2&RF_IRQFLAGS2_PAYLOADREADY != 0 {
 		// avoid RX deadlocks??
-		if err := editReg(board, REG_PACKETCONFIG2, func(val byte) byte {
+		if err := r.editReg(REG_PACKETCONFIG2, func(val byte) byte {
 			return val&0xFB | REG_PACKETCONFIG2
 		}); err != nil {
 			return err
 		}
 	}
 
-	if err := writeReg(board, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); err != nil {
+	if err := r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); err != nil {
 		return err
 	}
 
-	if err := editReg(board, REG_OPMODE, func(val byte) byte {
+	if err := r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_RECEIVER
 	}); err != nil {
 		return err
 	}
 
 	// set low power regs
-	if err := writeReg(board, REG_TESTPA1, 0x55); err != nil {
+	if err := r.writeReg(REG_TESTPA1, 0x55); err != nil {
 		return err
 	}
-	if err := writeReg(board, REG_TESTPA2, 0x70); err != nil {
+	if err := r.writeReg(REG_TESTPA2, 0x70); err != nil {
 		return err
 	}
 	return nil
 }
 
-func setHighPower(board Board) error {
-	if err := writeReg(board, REG_TESTPA1, 0x5D); err != nil {
+func (r *Radio) setHighPower() error {
+	if err := r.writeReg(REG_TESTPA1, 0x5D); err != nil {
 		return err
 	}
-	if err := writeReg(board, REG_TESTPA2, 0x7C); err != nil {
+	if err := r.writeReg(REG_TESTPA2, 0x7C); err != nil {
 		return err
 	}
 
-	if err := writeReg(board, REG_OCP, RF_OCP_OFF); err != nil {
+	if err := r.writeReg(REG_OCP, RF_OCP_OFF); err != nil {
 		return err
 	}
 
 	//enable P1 & P2 amplifier stages
-	if err := editReg(board, REG_PALEVEL, func(val byte) byte {
+	if err := r.editReg(REG_PALEVEL, func(val byte) byte {
 		return val&0x1F | RF_PALEVEL_PA1_ON | RF_PALEVEL_PA2_ON
 	}); err != nil {
 		return errors.Wrap(err, "edit")
@@ -242,15 +238,15 @@ func setHighPower(board Board) error {
 	return nil
 }
 
-func SendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []byte) error {
-	if err := editReg(board, REG_OPMODE, func(val byte) byte {
+func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
+	if err := r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_STANDBY
 	}); err != nil {
 		return errors.Wrap(err, "edit")
 	}
 
 	for {
-		val, err := readReg(board, REG_IRQFLAGS1)
+		val, err := r.readReg(REG_IRQFLAGS1)
 		if err != nil {
 			return errors.Wrap(err, "read")
 		}
@@ -260,8 +256,8 @@ func SendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []
 		break
 	}
 
-	log(fmt.Sprintf("here1\n"))
-	if err := writeReg(board, REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00); err != nil {
+	r.log(fmt.Sprintf("here1"))
+	if err := r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00); err != nil {
 		return errors.Wrap(err, "write")
 	}
 
@@ -277,21 +273,21 @@ func SendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []
 
 	tx = append(tx, msg...)
 
-	if err := board.TxSPI(
+	if err := r.board.TxSPI(
 		tx,
 		nil,
 	); err != nil {
 		return errors.Wrap(err, "tx spi")
 	}
 
-	if err := editReg(board, REG_OPMODE, func(val byte) byte {
+	if err := r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_TRANSMITTER
 	}); err != nil {
 		return errors.Wrap(err, "edit")
 	}
 
 	for {
-		val, err := readReg(board, REG_IRQFLAGS2)
+		val, err := r.readReg(REG_IRQFLAGS2)
 		if err != nil {
 			return errors.Wrap(err, "read")
 		}
@@ -304,10 +300,10 @@ func SendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []
 	return nil
 }
 
-func setConfig(board Board, log func(string), config [][2]byte) error {
+func (r *Radio) setConfig(config [][2]byte) error {
 	for _, kv := range config {
-		log(fmt.Sprintf("config 0x%02x = 0x%02x\n", kv[0], kv[1]))
-		if err := writeReg(board, kv[0], kv[1]); err != nil {
+		r.log(fmt.Sprintf("config 0x%02x = 0x%02x", kv[0], kv[1]))
+		if err := r.writeReg(kv[0], kv[1]); err != nil {
 			return errors.Wrap(err, "write")
 		}
 	}
@@ -315,10 +311,10 @@ func setConfig(board Board, log func(string), config [][2]byte) error {
 	return nil
 }
 
-func readReg(board Board, addr byte) (byte, error) {
+func (r *Radio) readReg(addr byte) (byte, error) {
 	rx := make([]byte, 2)
 
-	if err := board.TxSPI(
+	if err := r.board.TxSPI(
 		[]byte{addr & 0x7F, 0},
 		rx,
 	); err != nil {
@@ -328,10 +324,10 @@ func readReg(board Board, addr byte) (byte, error) {
 	return rx[1], nil
 }
 
-func writeReg(board Board, addr byte, value byte) error {
+func (r *Radio) writeReg(addr byte, value byte) error {
 	rx := make([]byte, 2)
 
-	if err := board.TxSPI(
+	if err := r.board.TxSPI(
 		[]byte{addr | 0x80, value},
 		rx,
 	); err != nil {
@@ -340,20 +336,18 @@ func writeReg(board Board, addr byte, value byte) error {
 	return nil
 }
 
-func editReg(
-	board Board,
+func (r *Radio) editReg(
 	addr byte,
 	edit func(val byte) byte,
 ) error {
-	val, err := readReg(board, addr)
+	val, err := r.readReg(addr)
 	if err != nil {
 		return errors.Wrap(err, "read")
 	}
 
 	newVal := edit(val)
 
-	if err := writeReg(
-		board,
+	if err := r.writeReg(
 		addr,
 		newVal,
 	); err != nil {

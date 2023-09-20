@@ -58,17 +58,18 @@ func run() error {
 		return errors.Wrap(err, "gpio in")
 	}
 
-	board := &Board{spi: conn, rst: rst, intr: intr}
+	radio := rfm69.NewRadio(
+		&Board{spi: conn, rst: rst, intr: intr},
+		func(s string) {
+			fmt.Println(s)
+		},
+	)
 
-	log := func(s string) {
-		fmt.Print(s)
-	}
-
-	if err := rfm69.Setup(board, log); err != nil {
+	if err := radio.Setup(); err != nil {
 		return errors.Wrap(err, "setup")
 	}
 
-	if err := rfm69.Rx(board, log); err != nil {
+	if err := radio.Rx(); err != nil {
 		return errors.Wrap(err, "rx")
 	}
 

@@ -22,13 +22,13 @@ func Setup(
 		return errors.Wrap(err, "reset")
 	}
 
-	time.Sleep(300 * time.Millisecond) // TODO: shorten to optimal value
+	time.Sleep(100 * time.Microsecond)
 
 	if err := board.Reset(false); err != nil {
 		return errors.Wrap(err, "reset")
 	}
 
-	time.Sleep(300 * time.Millisecond) // TODO: shorten to optimal value
+	time.Sleep(5 * time.Millisecond)
 
 	{
 		t0 := time.Now()

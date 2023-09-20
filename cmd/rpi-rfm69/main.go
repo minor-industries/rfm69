@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"encoding/binary"
 	"fmt"
 	"github.com/minor-industries/rfm69"
 	"github.com/pkg/errors"
@@ -33,6 +35,11 @@ func (b *Board) Reset(b2 bool) error {
 	} else {
 		return b.rst.Out(gpio.Low)
 	}
+}
+
+type SensorData struct {
+	Temperature      float32 // celsius
+	RelativeHumidity float32
 }
 
 func run() error {
@@ -75,6 +82,20 @@ func run() error {
 	go func() {
 		for packet := range packets {
 			log(fmt.Sprintf("got packet: %v", packet))
+			msgType := packet.Payload[0]
+			switch msgType {
+			case 1:
+				msg := &SensorData{}
+				err := binary.Read(bytes.NewBuffer(packet.Payload[1:]), binary.LittleEndian, msg)
+				if err != nil {
+					log("error reading message: " + err.Error())
+					break
+				}
+				log(fmt.Sprintf("msg = %v", msg))
+				log(fmt.Sprintf("temp = %fF", (msg.Temperature*9/5)+32))
+			default:
+				log(fmt.Sprintf("unknown message type: %d", msgType))
+			}
 		}
 	}()
 

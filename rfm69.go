@@ -167,47 +167,30 @@ func (r *Radio) Rx() error {
 }
 
 func (r *Radio) beginReceive() error {
-	irqflags2, err := r.readRegReturningErrors(REG_IRQFLAGS2)
-	if err != nil {
-		return err
-	}
-
-	if irqflags2&RF_IRQFLAGS2_PAYLOADREADY != 0 {
+	if r.readReg(REG_IRQFLAGS2)&RF_IRQFLAGS2_PAYLOADREADY != 0 {
 		// avoid RX deadlocks??
 		r.editReg(REG_PACKETCONFIG2, func(val byte) byte {
 			return val&0xFB | RF_PACKET2_RXRESTART
 		})
 	}
 
-	if err := r.writeRegReturningErrors(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); err != nil {
-		return err
-	}
-
+	r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01)
 	r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_RECEIVER
 	})
 
 	// set low power regs
-	if err := r.writeRegReturningErrors(REG_TESTPA1, 0x55); err != nil {
-		return err
-	}
-	if err := r.writeRegReturningErrors(REG_TESTPA2, 0x70); err != nil {
-		return err
-	}
+	r.writeReg(REG_TESTPA1, 0x55)
+	r.writeReg(REG_TESTPA2, 0x70)
+
 	return nil
 }
 
 func (r *Radio) setHighPower() error {
-	if err := r.writeRegReturningErrors(REG_TESTPA1, 0x5D); err != nil {
-		return err
-	}
-	if err := r.writeRegReturningErrors(REG_TESTPA2, 0x7C); err != nil {
-		return err
-	}
+	r.writeReg(REG_TESTPA1, 0x5D)
+	r.writeReg(REG_TESTPA2, 0x7C)
 
-	if err := r.writeRegReturningErrors(REG_OCP, RF_OCP_OFF); err != nil {
-		return err
-	}
+	r.writeReg(REG_OCP, RF_OCP_OFF)
 
 	//enable P1 & P2 amplifier stages
 	r.editReg(REG_PALEVEL, func(val byte) byte {
@@ -223,20 +206,14 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 	})
 
 	for {
-		val, err := r.readRegReturningErrors(REG_IRQFLAGS1)
-		if err != nil {
-			return errors.Wrap(err, "read")
-		}
-		if val&RF_IRQFLAGS1_MODEREADY == 0x00 {
+		if r.readReg(REG_IRQFLAGS1)&RF_IRQFLAGS1_MODEREADY == 0x00 {
 			continue
 		}
 		break
 	}
 
 	r.log(fmt.Sprintf("here1"))
-	if err := r.writeRegReturningErrors(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00); err != nil {
-		return errors.Wrap(err, "write")
-	}
+	r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
 
 	ack := byte(0)
 
@@ -262,11 +239,7 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 	})
 
 	for {
-		val, err := r.readRegReturningErrors(REG_IRQFLAGS2)
-		if err != nil {
-			return errors.Wrap(err, "read")
-		}
-		if val&RF_IRQFLAGS2_PACKETSENT == 0x00 {
+		if r.readReg(REG_IRQFLAGS2)&RF_IRQFLAGS2_PACKETSENT == 0x00 {
 			continue
 		}
 		break
@@ -278,9 +251,7 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 func (r *Radio) setConfig(config [][2]byte) error {
 	for _, kv := range config {
 		r.log(fmt.Sprintf("config 0x%02x = 0x%02x", kv[0], kv[1]))
-		if err := r.writeRegReturningErrors(kv[0], kv[1]); err != nil {
-			return errors.Wrap(err, "write")
-		}
+		r.writeReg(kv[0], kv[1])
 	}
 
 	return nil

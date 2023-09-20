@@ -39,7 +39,7 @@ func (r *Radio) Setup() error {
 	{
 		t0 := time.Now()
 		for {
-			a, err := r.readReg(REG_SYNCVALUE1)
+			a, err := r.readRegReturningErrors(REG_SYNCVALUE1)
 			if err != nil {
 				return errors.Wrap(err, "read syncvalue1")
 			}
@@ -47,7 +47,7 @@ func (r *Radio) Setup() error {
 			if a == 0xAA {
 				break
 			}
-			if err := r.writeReg(REG_SYNCVALUE1, 0xAA); err != nil {
+			if err := r.writeRegReturningErrors(REG_SYNCVALUE1, 0xAA); err != nil {
 				return errors.Wrap(err, "write syncvalue1")
 			}
 			if time.Now().Sub(t0) > 15*time.Second {
@@ -59,7 +59,7 @@ func (r *Radio) Setup() error {
 	{
 		t0 := time.Now()
 		for {
-			a, err := r.readReg(REG_SYNCVALUE1)
+			a, err := r.readRegReturningErrors(REG_SYNCVALUE1)
 			if err != nil {
 				return errors.Wrap(err, "read syncvalue1")
 			}
@@ -67,7 +67,7 @@ func (r *Radio) Setup() error {
 			if a == 0x55 {
 				break
 			}
-			if err := r.writeReg(REG_SYNCVALUE1, 0x55); err != nil {
+			if err := r.writeRegReturningErrors(REG_SYNCVALUE1, 0x55); err != nil {
 				return errors.Wrap(err, "write syncvalue1")
 			}
 			if time.Now().Sub(t0) > 15*time.Second {
@@ -182,71 +182,63 @@ func (r *Radio) Rx() error {
 }
 
 func (r *Radio) beginReceive() error {
-	irqflags2, err := r.readReg(REG_IRQFLAGS2)
+	irqflags2, err := r.readRegReturningErrors(REG_IRQFLAGS2)
 	if err != nil {
 		return err
 	}
 
 	if irqflags2&RF_IRQFLAGS2_PAYLOADREADY != 0 {
 		// avoid RX deadlocks??
-		if err := r.editReg(REG_PACKETCONFIG2, func(val byte) byte {
-			return val&0xFB | REG_PACKETCONFIG2
-		}); err != nil {
-			return err
-		}
+		r.editReg(REG_PACKETCONFIG2, func(val byte) byte {
+			return val&0xFB | RF_PACKET2_RXRESTART
+		})
 	}
 
-	if err := r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); err != nil {
+	if err := r.writeRegReturningErrors(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_01); err != nil {
 		return err
 	}
 
-	if err := r.editReg(REG_OPMODE, func(val byte) byte {
+	r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_RECEIVER
-	}); err != nil {
-		return err
-	}
+	})
 
 	// set low power regs
-	if err := r.writeReg(REG_TESTPA1, 0x55); err != nil {
+	if err := r.writeRegReturningErrors(REG_TESTPA1, 0x55); err != nil {
 		return err
 	}
-	if err := r.writeReg(REG_TESTPA2, 0x70); err != nil {
+	if err := r.writeRegReturningErrors(REG_TESTPA2, 0x70); err != nil {
 		return err
 	}
 	return nil
 }
 
 func (r *Radio) setHighPower() error {
-	if err := r.writeReg(REG_TESTPA1, 0x5D); err != nil {
+	if err := r.writeRegReturningErrors(REG_TESTPA1, 0x5D); err != nil {
 		return err
 	}
-	if err := r.writeReg(REG_TESTPA2, 0x7C); err != nil {
+	if err := r.writeRegReturningErrors(REG_TESTPA2, 0x7C); err != nil {
 		return err
 	}
 
-	if err := r.writeReg(REG_OCP, RF_OCP_OFF); err != nil {
+	if err := r.writeRegReturningErrors(REG_OCP, RF_OCP_OFF); err != nil {
 		return err
 	}
 
 	//enable P1 & P2 amplifier stages
-	if err := r.editReg(REG_PALEVEL, func(val byte) byte {
+	r.editReg(REG_PALEVEL, func(val byte) byte {
 		return val&0x1F | RF_PALEVEL_PA1_ON | RF_PALEVEL_PA2_ON
-	}); err != nil {
-		return errors.Wrap(err, "edit")
-	}
+	})
 
 	return nil
 }
 
 func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
-	if err := r.editReg(REG_OPMODE, func(val byte) byte {
+	r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_STANDBY
-	}); err != nil {
-		return errors.Wrap(err, "edit")
-	}
+	})
 
 	for {
-		val, err := r.readReg(REG_IRQFLAGS1)
+		val, err := r.readRegReturningErrors(REG_IRQFLAGS1)
 		if err != nil {
 			return errors.Wrap(err, "read")
 		}
@@ -257,7 +249,7 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 	}
 
 	r.log(fmt.Sprintf("here1"))
-	if err := r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00); err != nil {
+	if err := r.writeRegReturningErrors(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00); err != nil {
 		return errors.Wrap(err, "write")
 	}
 
@@ -280,14 +272,12 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 		return errors.Wrap(err, "tx spi")
 	}
 
-	if err := r.editReg(REG_OPMODE, func(val byte) byte {
+	r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_TRANSMITTER
-	}); err != nil {
-		return errors.Wrap(err, "edit")
-	}
+	})
 
 	for {
-		val, err := r.readReg(REG_IRQFLAGS2)
+		val, err := r.readRegReturningErrors(REG_IRQFLAGS2)
 		if err != nil {
 			return errors.Wrap(err, "read")
 		}
@@ -303,7 +293,7 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 func (r *Radio) setConfig(config [][2]byte) error {
 	for _, kv := range config {
 		r.log(fmt.Sprintf("config 0x%02x = 0x%02x", kv[0], kv[1]))
-		if err := r.writeReg(kv[0], kv[1]); err != nil {
+		if err := r.writeRegReturningErrors(kv[0], kv[1]); err != nil {
 			return errors.Wrap(err, "write")
 		}
 	}
@@ -311,7 +301,7 @@ func (r *Radio) setConfig(config [][2]byte) error {
 	return nil
 }
 
-func (r *Radio) readReg(addr byte) (byte, error) {
+func (r *Radio) readRegReturningErrors(addr byte) (byte, error) {
 	rx := make([]byte, 2)
 
 	if err := r.board.TxSPI(
@@ -324,7 +314,12 @@ func (r *Radio) readReg(addr byte) (byte, error) {
 	return rx[1], nil
 }
 
-func (r *Radio) writeReg(addr byte, value byte) error {
+func (r *Radio) readReg(addr byte) byte {
+	val, _ := r.readRegReturningErrors(addr)
+	return val
+}
+
+func (r *Radio) writeRegReturningErrors(addr byte, value byte) error {
 	rx := make([]byte, 2)
 
 	if err := r.board.TxSPI(
@@ -336,23 +331,15 @@ func (r *Radio) writeReg(addr byte, value byte) error {
 	return nil
 }
 
+func (r *Radio) writeReg(addr byte, value byte) {
+	_ = r.writeRegReturningErrors(addr, value)
+}
+
 func (r *Radio) editReg(
 	addr byte,
 	edit func(val byte) byte,
-) error {
-	val, err := r.readReg(addr)
-	if err != nil {
-		return errors.Wrap(err, "read")
-	}
-
+) {
+	val := r.readReg(addr)
 	newVal := edit(val)
-
-	if err := r.writeReg(
-		addr,
-		newVal,
-	); err != nil {
-		return errors.Wrap(err, "write")
-	}
-
-	return nil
+	r.writeReg(addr, newVal)
 }

@@ -100,7 +100,7 @@ func Tx(
 	ticker := time.NewTicker(time.Second)
 
 	for range ticker.C {
-		if err := sendFrame(
+		if err := SendFrame(
 			board,
 			log,
 			2,
@@ -242,7 +242,7 @@ func setHighPower(board Board) error {
 	return nil
 }
 
-func sendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []byte) error {
+func SendFrame(board Board, log func(string), toAddr byte, fromAddr byte, msg []byte) error {
 	if err := editReg(board, REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_STANDBY
 	}); err != nil {

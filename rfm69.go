@@ -23,6 +23,23 @@ func NewRadio(board Board, log func(string)) *Radio {
 	return &Radio{board: board, log: log}
 }
 
+func (r *Radio) sync(val byte) error {
+	for i := 0; i < 15; i++ {
+		a, err := r.readRegReturningErrors(REG_SYNCVALUE1)
+		if err != nil {
+			return errors.Wrap(err, "read syncvalue1")
+		}
+		r.log(fmt.Sprintf("val = 0x%02x", a))
+		if a == val {
+			return nil
+		}
+		if err := r.writeRegReturningErrors(REG_SYNCVALUE1, val); err != nil {
+			return errors.Wrap(err, "write syncvalue1")
+		}
+	}
+	return errors.New("radio is not syncing")
+}
+
 func (r *Radio) Setup() error {
 	if err := r.board.Reset(true); err != nil {
 		return errors.Wrap(err, "reset")
@@ -36,44 +53,12 @@ func (r *Radio) Setup() error {
 
 	time.Sleep(5 * time.Millisecond)
 
-	{
-		t0 := time.Now()
-		for {
-			a, err := r.readRegReturningErrors(REG_SYNCVALUE1)
-			if err != nil {
-				return errors.Wrap(err, "read syncvalue1")
-			}
-			r.log(fmt.Sprintf("val = 0x%02x", a))
-			if a == 0xAA {
-				break
-			}
-			if err := r.writeRegReturningErrors(REG_SYNCVALUE1, 0xAA); err != nil {
-				return errors.Wrap(err, "write syncvalue1")
-			}
-			if time.Now().Sub(t0) > 15*time.Second {
-				return errors.New("not syncing")
-			}
-		}
+	if err := r.sync(0xAA); err != nil {
+		return errors.Wrap(err, "sync 1")
 	}
 
-	{
-		t0 := time.Now()
-		for {
-			a, err := r.readRegReturningErrors(REG_SYNCVALUE1)
-			if err != nil {
-				return errors.Wrap(err, "read syncvalue1")
-			}
-			r.log(fmt.Sprintf("val = 0x%02x", a))
-			if a == 0x55 {
-				break
-			}
-			if err := r.writeRegReturningErrors(REG_SYNCVALUE1, 0x55); err != nil {
-				return errors.Wrap(err, "write syncvalue1")
-			}
-			if time.Now().Sub(t0) > 15*time.Second {
-				return errors.New("not syncing")
-			}
-		}
+	if err := r.sync(0x55); err != nil {
+		return errors.Wrap(err, "sync 2")
 	}
 
 	if err := r.setConfig(

@@ -120,6 +120,9 @@ func (r *Radio) Rx() error {
 			<-intrCh
 			r.log("got interrupt")
 
+			rssi := r.readRSSI()
+			r.log(fmt.Sprintf("rssi = %d", rssi))
+
 			tx := []byte{REG_FIFO & 0x7f, 0, 0, 0, 0}
 			rx := make([]byte, len(tx))
 
@@ -298,4 +301,9 @@ func (r *Radio) editReg(
 	val := r.readReg(addr)
 	newVal := edit(val)
 	r.writeReg(addr, newVal)
+}
+
+func (r *Radio) readRSSI() int {
+	val := int(r.readReg(REG_RSSIVALUE)) * -1
+	return val / 2
 }

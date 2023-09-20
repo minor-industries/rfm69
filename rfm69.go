@@ -98,7 +98,14 @@ func (r *Radio) Tx() error {
 	return nil
 }
 
-func (r *Radio) Rx() error {
+type Packet struct {
+	Src     byte
+	Dst     byte
+	RSSI    int
+	Payload []byte
+}
+
+func (r *Radio) Rx(out chan<- *Packet) error {
 	intrCh := make(chan struct{})
 	errCh := make(chan error)
 
@@ -162,6 +169,13 @@ func (r *Radio) Rx() error {
 				}
 				rx = rx[1:]
 				r.log("data: " + hex.Dump(rx))
+
+				out <- &Packet{
+					Src:     senderID,
+					Dst:     targetID,
+					RSSI:    rssi,
+					Payload: rx,
+				}
 			}
 		}
 	}()

@@ -40,7 +40,7 @@ func (r *Radio) sync(val byte) error {
 	return errors.New("radio is not syncing")
 }
 
-func (r *Radio) Setup() error {
+func (r *Radio) Setup(freq byte) error {
 	if err := r.board.Reset(true); err != nil {
 		return errors.Wrap(err, "reset")
 	}

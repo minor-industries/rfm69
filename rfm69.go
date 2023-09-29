@@ -61,38 +61,12 @@ func (r *Radio) Setup(freq byte) error {
 		return errors.Wrap(err, "sync 2")
 	}
 
+	r.SetPowerDBm(13)
+
 	if err := r.setConfig(
 		getConfig(RF69_433MHZ, 100),
 	); err != nil {
 		return errors.Wrap(err, "set config")
-	}
-
-	if err := r.setHighPower(); err != nil {
-		return errors.Wrap(err, "set high power")
-	}
-
-	return nil
-}
-
-func (r *Radio) Tx() error {
-	go func() {
-		for {
-			r.board.WaitForD0Edge()
-			r.log(fmt.Sprintf("edge"))
-		}
-
-	}()
-
-	ticker := time.NewTicker(time.Second)
-
-	for range ticker.C {
-		if err := r.SendFrame(
-			2,
-			1,
-			[]byte("abc123\x00"),
-		); err != nil {
-			return errors.Wrap(err, "send frame")
-		}
 	}
 
 	return nil
@@ -203,21 +177,9 @@ func (r *Radio) beginReceive() error {
 	return nil
 }
 
-func (r *Radio) setHighPower() error {
-	r.writeReg(REG_TESTPA1, 0x5D)
-	r.writeReg(REG_TESTPA2, 0x7C)
-
-	r.writeReg(REG_OCP, RF_OCP_OFF)
-
-	//enable P1 & P2 amplifier stages
-	r.editReg(REG_PALEVEL, func(val byte) byte {
-		return val&0x1F | RF_PALEVEL_PA1_ON | RF_PALEVEL_PA2_ON
-	})
-
-	return nil
-}
-
 func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
+	r.SetPowerDBm(20)
+
 	r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_STANDBY
 	})
@@ -229,7 +191,6 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 		break
 	}
 
-	r.log(fmt.Sprintf("here1"))
 	r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
 
 	ack := byte(0)
@@ -320,4 +281,60 @@ func (r *Radio) editReg(
 func (r *Radio) readRSSI() int {
 	val := int(r.readReg(REG_RSSIVALUE)) * -1
 	return val / 2
+}
+
+type levelSetting struct {
+	paLevel   byte
+	pa2       bool
+	highPower bool
+}
+
+var powerLevelSettings = map[int]levelSetting{
+	-2: {16, false, false},
+	-1: {17, false, false},
+	-0: {18, false, false},
+	1:  {19, false, false},
+	2:  {20, false, false},
+	3:  {21, false, false},
+	4:  {22, false, false},
+	5:  {23, false, false},
+	6:  {24, false, false},
+	7:  {25, false, false},
+	8:  {26, false, false},
+	9:  {27, false, false},
+	10: {28, false, false},
+	11: {29, false, false},
+	12: {30, false, false},
+	13: {31, false, false},
+	14: {28, true, false},
+	15: {29, true, false},
+	16: {30, true, false},
+	17: {31, true, false},
+	18: {29, true, true},
+	19: {30, true, true},
+	20: {31, true, true},
+}
+
+func (r *Radio) SetPowerDBm(val int) {
+	val = max(val, -2)
+	val = min(val, 20)
+
+	settings := powerLevelSettings[val]
+
+	if settings.highPower {
+		r.writeReg(REG_OCP, RF_OCP_OFF)
+		r.writeReg(REG_PALEVEL, settings.paLevel|RF_PALEVEL_PA1_ON|RF_PALEVEL_PA2_ON)
+		r.writeReg(REG_TESTPA1, 0x5D)
+		r.writeReg(REG_TESTPA2, 0x7C)
+	} else if settings.pa2 {
+		r.writeReg(REG_TESTPA1, 0x55)
+		r.writeReg(REG_TESTPA2, 0x70)
+		r.writeReg(REG_PALEVEL, settings.paLevel|RF_PALEVEL_PA1_ON|RF_PALEVEL_PA2_ON)
+		r.writeReg(REG_OCP, RF_OCP_ON)
+	} else {
+		r.writeReg(REG_TESTPA1, 0x55)
+		r.writeReg(REG_TESTPA2, 0x70)
+		r.writeReg(REG_PALEVEL, settings.paLevel|RF_PALEVEL_PA1_ON)
+		r.writeReg(REG_OCP, RF_OCP_ON)
+	}
 }

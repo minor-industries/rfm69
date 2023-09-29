@@ -180,6 +180,7 @@ func (r *Radio) beginReceive() error {
 func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 	r.SetPowerDBm(20)
 
+	// set mode to standby
 	r.editReg(REG_OPMODE, func(val byte) byte {
 		return val&0xE3 | RF_OPMODE_STANDBY
 	})
@@ -193,7 +194,7 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 
 	r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
 
-	ack := byte(0)
+	ack := byte(0x00)
 
 	tx := []byte{
 		REG_FIFO | 0x80,
@@ -204,6 +205,7 @@ func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
 	}
 
 	tx = append(tx, msg...)
+	//tx = append(tx, 0)
 
 	if err := r.board.TxSPI(
 		tx,

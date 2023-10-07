@@ -177,8 +177,13 @@ func (r *Radio) beginReceive() error {
 	return nil
 }
 
-func (r *Radio) SendFrame(toAddr byte, fromAddr byte, msg []byte) error {
-	r.SetPowerDBm(20)
+func (r *Radio) SendFrame(
+	toAddr byte,
+	fromAddr byte,
+	txPower int,
+	msg []byte,
+) error {
+	r.SetPowerDBm(txPower)
 	defer func() {
 		// set mode to standby
 		r.editReg(REG_OPMODE, func(val byte) byte {

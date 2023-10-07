@@ -177,34 +177,43 @@ func (r *Radio) beginReceive() error {
 	return nil
 }
 
+type Mode int
+
+const (
+	ModeStandby Mode = iota + 1
+	ModeTx      Mode = iota + 1
+)
+
+func (r *Radio) setMode(mode Mode) {
+	switch mode {
+	case ModeStandby:
+		r.editReg(REG_OPMODE, func(val byte) byte {
+			return val&0xE3 | RF_OPMODE_STANDBY
+		})
+	case ModeTx:
+		r.editReg(REG_OPMODE, func(val byte) byte {
+			return val&0xE3 | RF_OPMODE_TRANSMITTER
+		})
+	default:
+		panic("unknown mode")
+	}
+}
+
+func (r *Radio) waitForModeReady() {
+	for r.readReg(REG_IRQFLAGS1)&RF_IRQFLAGS1_MODEREADY == 0x00 {
+	}
+}
+
 func (r *Radio) SendFrame(
 	toAddr byte,
 	fromAddr byte,
 	txPower int,
 	msg []byte,
 ) error {
+	r.setMode(ModeStandby)
+	r.waitForModeReady()
+	r.clearFIFO()
 	r.SetPowerDBm(txPower)
-	defer func() {
-		// set mode to standby
-		r.editReg(REG_OPMODE, func(val byte) byte {
-			return val&0xE3 | RF_OPMODE_STANDBY
-		})
-
-		r.SetPowerDBm(-2)
-	}()
-
-	// set mode to standby
-	r.editReg(REG_OPMODE, func(val byte) byte {
-		return val&0xE3 | RF_OPMODE_STANDBY
-	})
-
-	for {
-		if r.readReg(REG_IRQFLAGS1)&RF_IRQFLAGS1_MODEREADY == 0x00 {
-			continue
-		}
-		break
-	}
-
 	r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
 
 	ack := byte(0x00)
@@ -227,16 +236,12 @@ func (r *Radio) SendFrame(
 		return errors.Wrap(err, "tx spi")
 	}
 
-	r.editReg(REG_OPMODE, func(val byte) byte {
-		return val&0xE3 | RF_OPMODE_TRANSMITTER
-	})
+	r.setMode(ModeTx)
+	r.waitForPacketSent()
 
-	for {
-		if r.readReg(REG_IRQFLAGS2)&RF_IRQFLAGS2_PACKETSENT == 0x00 {
-			continue
-		}
-		break
-	}
+	r.setMode(ModeStandby)
+	r.waitForModeReady()
+	r.SetPowerDBm(-2)
 
 	return nil
 }
@@ -351,5 +356,15 @@ func (r *Radio) SetPowerDBm(val int) {
 		r.writeReg(REG_TESTPA2, 0x70)
 		r.writeReg(REG_PALEVEL, settings.paLevel|RF_PALEVEL_PA1_ON)
 		r.writeReg(REG_OCP, RF_OCP_ON)
+	}
+}
+
+func (r *Radio) clearFIFO() {
+	//r.writeReg(0x28, 0x10);
+	r.writeReg(REG_IRQFLAGS2, RF_IRQFLAGS2_FIFOOVERRUN)
+}
+
+func (r *Radio) waitForPacketSent() {
+	for r.readReg(REG_IRQFLAGS2)&RF_IRQFLAGS2_PACKETSENT == 0x00 {
 	}
 }

@@ -15,12 +15,24 @@ type Board interface {
 }
 
 type Radio struct {
-	board Board
-	log   func(string)
+	board    Board
+	log      func(string)
+	fromAddr byte
+	txPower  int
 }
 
-func NewRadio(board Board, log func(string)) *Radio {
-	return &Radio{board: board, log: log}
+func NewRadio(
+	board Board,
+	log func(string),
+	fromAddr byte,
+	txPower int,
+) *Radio {
+	return &Radio{
+		board:    board,
+		log:      log,
+		fromAddr: fromAddr,
+		txPower:  txPower,
+	}
 }
 
 func (r *Radio) sync(val byte) error {
@@ -206,14 +218,12 @@ func (r *Radio) waitForModeReady() {
 
 func (r *Radio) SendFrame(
 	toAddr byte,
-	fromAddr byte,
-	txPower int,
 	msg []byte,
 ) error {
 	r.setMode(ModeStandby)
 	r.waitForModeReady()
 	r.clearFIFO()
-	r.SetPowerDBm(txPower)
+	r.SetPowerDBm(r.txPower)
 	r.writeReg(REG_DIOMAPPING1, RF_DIOMAPPING1_DIO0_00)
 
 	ack := byte(0x00)
@@ -222,7 +232,7 @@ func (r *Radio) SendFrame(
 		REG_FIFO | 0x80,
 		byte(len(msg) + 3),
 		toAddr,
-		fromAddr,
+		r.fromAddr,
 		ack,
 	}
 

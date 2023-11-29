@@ -52,6 +52,10 @@ func (r *Radio) sync(val byte) error {
 	return errors.New("radio is not syncing")
 }
 
+func (r *Radio) SetMode(mode Mode) {
+	r.setMode(mode)
+}
+
 func (r *Radio) Setup(freq byte) error {
 	if err := r.board.Reset(true); err != nil {
 		return errors.Wrap(err, "reset")
@@ -194,6 +198,7 @@ type Mode int
 const (
 	ModeStandby Mode = iota + 1
 	ModeTx      Mode = iota + 1
+	ModeSleep   Mode = iota + 1
 )
 
 func (r *Radio) setMode(mode Mode) {
@@ -205,6 +210,10 @@ func (r *Radio) setMode(mode Mode) {
 	case ModeTx:
 		r.editReg(REG_OPMODE, func(val byte) byte {
 			return val&0xE3 | RF_OPMODE_TRANSMITTER
+		})
+	case ModeSleep:
+		r.editReg(REG_OPMODE, func(val byte) byte {
+			return val&0xE3 | RF_OPMODE_SLEEP
 		})
 	default:
 		panic("unknown mode")

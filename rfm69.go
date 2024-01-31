@@ -88,13 +88,6 @@ func (r *Radio) Setup(freq byte) error {
 	return nil
 }
 
-type Packet struct {
-	Src     byte
-	Dst     byte
-	RSSI    int
-	Payload []byte
-}
-
 func (r *Radio) Rx(out chan<- *Packet) error {
 	intrCh := make(chan struct{})
 	errCh := make(chan error)
